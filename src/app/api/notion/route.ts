@@ -1,6 +1,12 @@
+import { createClient } from 'redis';
+
+const databaseId = process.env.NOTION_DATABASE_ID;
+const notionToken = process.env.NOTION_TOKEN;
+const redisUrl = process.env.REDIS_URL;
+
+const redis = await createClient({ url: redisUrl }).connect();
+
 export async function GET() {
-    const databaseId = process.env.NOTION_DATABASE_ID;
-    const notionToken = process.env.NOTION_TOKEN;
   
     try {
       const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
@@ -18,6 +24,10 @@ export async function GET() {
       }
   
       const data = await response.json();
+
+      const name = data.results[0].properties.Name.title[0].text.content;
+      await redis.set("name", name, { EX: 5 * 60 });
+
       return new Response(JSON.stringify(data.results), {
         status: 200,
         headers: { "Content-Type": "application/json" },
