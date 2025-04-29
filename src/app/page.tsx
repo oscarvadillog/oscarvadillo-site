@@ -1,10 +1,57 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
+
+interface NotionUser {
+  id: string;
+  properties: {
+    Name: {
+      title: {
+        text: {
+          content: string;
+        };
+      }[];
+    };
+    Role: {
+      rich_text: {
+        text: {
+          content: string;
+        };
+      }[];
+    };
+    Bio: {
+      rich_text: {
+        text: {
+          content: string;
+        };
+      }[];
+    };
+    Email: {
+      email: string;
+    };
+    Location: {
+      rich_text: {
+        text: {
+          content: string;
+        };
+      }[];
+    };
+    'Created time': {
+      created_time: string;
+    };
+    'Profile Picture': {
+      files: {
+        file: {
+          url: string;
+        };
+      }[];
+    };
+  };
+}
 
 export default function Home() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<NotionUser[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,62 +78,56 @@ export default function Home() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center font-[family-name:var(--font-geist-sans)]">
-        <h1 className="text-3xl font-bold">Loading...</h1>
+      <main className="min-h-screen flex items-center justify-center font-sans bg-gray-50">
+        <h1 className="text-3xl font-bold animate-pulse text-gray-700">Loading...</h1>
       </main>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center font-[family-name:var(--font-geist-sans)]">
-        <h1 className="text-3xl font-bold text-red-500">Error! {error}</h1>
+      <main className="min-h-screen flex items-center justify-center font-sans bg-gray-50">
+        <h1 className="text-3xl font-bold text-red-600">{error}</h1>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center font-[family-name:var(--font-geist-sans)]">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold">Profile</h1>
+    <main className="min-h-screen flex items-center justify-center bg-gray-50 font-sans px-4 py-12">
+      <div className="w-full max-w-3xl">
         {data && data.length > 0 ? (
-          data.map((item: any) => (
-            <div key={item.id} className="max-w-lg mx-auto mt-6 p-6 border rounded-xl shadow-lg bg-white">
-              <h2 className="text-2xl font-semibold mb-4">{item.properties.Name.title[0].text.content}</h2>
-              <div className="mb-4">
-                <strong>Bio:</strong>
-                <p>{item.properties.Bio.rich_text[0].text.content}</p>
-              </div>
-              <div className="mb-4">
-                <strong>Email:</strong>
-                <p>{item.properties.Email.email}</p>
-              </div>
-              <div className="mb-4">
-                <strong>Role:</strong>
-                <p>{item.properties.Role.rich_text[0].text.content}</p>
-              </div>
-              <div className="mb-4">
-                <strong>Location:</strong>
-                <p>{item.properties.Location.rich_text[0].text.content}</p>
-              </div>
-              <div className="mb-4">
-                <strong>Created Time:</strong>
-                <p>{new Date(item.properties['Created time'].created_time).toLocaleDateString()}</p>
-              </div>
-              {item.properties['Profile Picture'].files.length > 0 && (
-                <div className="mb-4">
-                  <strong>Profile Picture:</strong>
-                  <img
+          data!.map((item: NotionUser) => (
+            <div
+              key={item.id}
+              className="p-6 bg-white rounded-2xl shadow-lg border border-gray-200 mb-8 transition-transform hover:scale-[1.02]"
+            >
+              <div className="flex flex-col items-center text-center">
+                {item.properties['Profile Picture'].files.length > 0 && (
+                  <Image
                     src={item.properties['Profile Picture'].files[0].file.url}
+                    width={112}
+                    height={112}
                     alt="Profile"
-                    className="w-32 h-32 rounded-full mx-auto mt-2"
+                    className="w-28 h-28 rounded-full object-cover mb-4 border-2 border-gray-300"
                   />
-                </div>
-              )}
+                )}
+                <h2 className="text-2xl font-bold text-gray-800 mb-1">
+                  {item.properties.Name.title[0].text.content}
+                </h2>
+                <p className="text-sm text-gray-500 mb-4">
+                  {item.properties.Role.rich_text[0].text.content}
+                </p>
+              </div>
+              <div className="text-left text-gray-700 space-y-2">
+                <p><span className="font-semibold">Bio:</span> {item.properties.Bio.rich_text[0].text.content}</p>
+                <p><span className="font-semibold">Email:</span> {item.properties.Email.email}</p>
+                <p><span className="font-semibold">Location:</span> {item.properties.Location.rich_text[0].text.content}</p>
+                <p><span className="font-semibold">Joined:</span> {new Date(item.properties['Created time'].created_time).toLocaleDateString()}</p>
+              </div>
             </div>
           ))
         ) : (
-          <p>No data found</p>
+          <p className="text-center text-gray-600">No data found.</p>
         )}
       </div>
     </main>
