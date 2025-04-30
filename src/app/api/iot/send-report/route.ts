@@ -37,14 +37,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Get the start and end dates of the previous month
-    const now = new Date();
-    const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of the previous month
-
-    // Convert dates to ISO 8601 format (yyyy-mm-dd)
-    const startDate = firstDayLastMonth.toISOString().split('T')[0];
-    const endDate = lastDayLastMonth.toISOString().split('T')[0];
+    const today = new Date();
+    const firstDayCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const firstDayLastMonth = new Date(firstDayCurrentMonth.getFullYear(), firstDayCurrentMonth.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(firstDayCurrentMonth.getFullYear(), firstDayCurrentMonth.getMonth(), 0);
+    
+    // Format as yyyy-mm-dd using toLocaleDateString with 'en-CA' locale (which outputs ISO format)
+    const startDate = firstDayLastMonth.toLocaleDateString('en-CA'); // "2025-04-01"
+    const endDate = lastDayLastMonth.toLocaleDateString('en-CA');    // "2025-04-30"
 
     // Fetch data from Notion for the previous month
     const notionDataResponse = await request(`https://api.notion.com/v1/databases/${databaseId}/query`, {
@@ -56,11 +56,20 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         filter: {
-          property: 'Fecha',
-          date: {
-            after: startDate, // Start date of the previous month
-            before: endDate,  // End date of the previous month
-          },
+          and: [
+            {
+              property: 'Fecha',
+              date: {
+                on_or_after: startDate,
+              },
+            },
+            {
+              property: 'Fecha',
+              date: {
+                on_or_before: endDate,
+              },
+            },
+          ],
         },
       }),
     });
@@ -68,7 +77,7 @@ export async function POST(req: Request) {
     // Define an interface for the expected structure of the Notion data
     interface NotionResult {
       properties: {
-        Fecha: { date: { start: string } };
+        Fecha: { created_time: string };
         'Temperatura Impulsión': { number: number };
         Caudal: { number: number };
         Potencia: { number: number };
@@ -81,6 +90,7 @@ export async function POST(req: Request) {
     }
     
     const notionData = await notionDataResponse.body.json() as { results: NotionResult[] };
+    console.log('Notion data:', notionData);
     const data = notionData.results;
 
     // If no data is found, return an error
@@ -112,7 +122,7 @@ export async function POST(req: Request) {
             const consumo = entry.properties;
             return `
               <tr>
-                <td>${consumo['Fecha'].date.start}</td>
+                <td>${consumo['Fecha'].created_time}</td>
                 <td>${consumo['Temperatura Impulsión'].number} °C</td>
                 <td>${consumo['Caudal'].number} m³/h</td>
                 <td>${consumo['Potencia'].number} kW</td>
@@ -126,7 +136,7 @@ export async function POST(req: Request) {
           }).join('')}
         </tbody>
       </table>
-      <p>Thank you for using our service.</p>
+      <p>Best Regards.</p>
     `;
 
     // Get the previous month name for the subject
