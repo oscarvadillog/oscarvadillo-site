@@ -1,6 +1,6 @@
 import { createClient } from 'redis';
 
-const databaseId = process.env.NOTION_DATABASE_ID;
+const databaseId = process.env.NOTION_PROFILE_DATABASE_ID;
 const notionToken = process.env.NOTION_TOKEN;
 const redisUrl = process.env.REDIS_URL;
 
