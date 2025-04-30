@@ -7,18 +7,37 @@ const consumptionUrl = process.env.CONSUMPTION_URL_LOGIN;
 const consumptionEmail = process.env.CONSUMPTION_EMAIL;
 const consumptionPwd = process.env.CONSUMPTION_PWD;
 const measureUrl = process.env.CONSUMPTION_URL_MEASURE;
+const cronSecret = process.env.CRON_SECRET_TOKEN;
 
-export async function GET() {
+export async function POST(req: Request) {
+  // Parse JSON body to extract the secret token
+  let body: { token?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
 
-  if (!notionToken) throw new Error('Environment variable NOTION_TOKEN is not defined');
-  if (!databaseId) throw new Error('Environment variable NOTION_CONSUMPTION_DATABASE_ID is not defined');
-  if (!consumptionEmail) throw new Error('Environment variable CONSUMPTION_EMAIL is not defined');
-  if (!consumptionPwd) throw new Error('Environment variable CONSUMPTION_PWD is not defined');
-  if (!consumptionUrl) throw new Error('Environment variable CONSUMPTION_URL_LOGIN is not defined');
-  if (!measureUrl) throw new Error('Environment variable CONSUMPTION_URL_MEASURE is not defined');
+  const token = body?.token;
+
+  // Validate secret token
+  if (!token || token !== cronSecret) {
+    return NextResponse.json({ error: 'Unauthorized (token)' }, { status: 401 });
+  }
+
+  // Validate that request is from cron-job.org using User-Agent
+  const userAgent = req.headers.get('user-agent') || '';
+  if (!userAgent.toLowerCase().includes('cron-job.org')) {
+    return NextResponse.json({ error: 'Unauthorized (user-agent)' }, { status: 401 });
+  }
+
+  // Check for required environment variables
+  if (!notionToken || !databaseId || !consumptionEmail || !consumptionPwd || !consumptionUrl || !measureUrl) {
+    return NextResponse.json({ error: 'Missing environment variables' }, { status: 500 });
+  }
 
   try {
-    // Step 1: Login to the consumption endpoint
+    // Step 1: Login to external system
     const formBody = new URLSearchParams();
     formBody.append('email', consumptionEmail);
     formBody.append('login', consumptionPwd);
@@ -32,6 +51,7 @@ export async function GET() {
       body: formBody.toString(),
     });
 
+    // Extract cookies from login response
     const setCookieHeader = loginResponse.headers['set-cookie'];
     const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
 
@@ -44,12 +64,12 @@ export async function GET() {
     const { JSESSIONID, ['remember-me']: rememberMe } = cookieMap;
 
     if (!JSESSIONID || !rememberMe) {
-      return NextResponse.json({ error: 'Missking session information' }, { status: 401 });
+      return NextResponse.json({ error: 'Missing session info' }, { status: 401 });
     }
 
     const cookieHeader = `JSESSIONID=${JSESSIONID}; remember-me=${rememberMe}`;
 
-    // Step 2: Obtaining consumption measures
+    // Step 2: Fetch measurement data
     const dataResponse = await request(measureUrl, {
       method: 'GET',
       headers: {
@@ -71,7 +91,7 @@ export async function GET() {
       contador_agua: dataParsed.mBus121Pulse3,
     };
 
-    // Step 3: Pushing information to the Notion database
+    // Step 3: Send data to Notion database
     await request('https://api.notion.com/v1/pages', {
       method: 'POST',
       headers: {
@@ -84,51 +104,21 @@ export async function GET() {
           database_id: databaseId,
         },
         properties: {
-          "Fecha": {
-            date: {
-              start: new Date().toISOString(),
-            },
-          },
-          "Temperatura Impulsión": {
-            number: filtered.temperatura_impulsion,
-          },
-          "Caudal": {
-            number: filtered.caudal,
-          },
-          "Potencia": {
-            number: filtered.potencia,
-          },
-          "Temperatura Retorno": {
-            number: filtered.temperatura_retorno,
-          },
-          "Volumen": {
-            number: filtered.volumen,
-          },
-          "Energía": {
-            number: filtered.energia,
-          },
-          "Tiempo Funcionamiento": {
-            number: filtered.tiempo_funcionamiento,
-          },
-          "Contador Agua": {
-            number: filtered.contador_agua,
-          },
+          "Fecha": { date: { start: new Date().toISOString() } },
+          "Temperatura Impulsión": { number: filtered.temperatura_impulsion },
+          "Caudal": { number: filtered.caudal },
+          "Potencia": { number: filtered.potencia },
+          "Temperatura Retorno": { number: filtered.temperatura_retorno },
+          "Volumen": { number: filtered.volumen },
+          "Energía": { number: filtered.energia },
+          "Tiempo Funcionamiento": { number: filtered.tiempo_funcionamiento },
+          "Contador Agua": { number: filtered.contador_agua },
         },
       }),
     });
 
-    // Step 4: Returning response to the client
-    return NextResponse.json(
-      {
-        success: true,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        status: 200,
-      }
-    );
+    // Step 4: Return success response
+    return NextResponse.json({ success: true }, { status: 200 });
 
   } catch (error) {
     console.error('Error:', error);
