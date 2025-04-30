@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized (token)' }, { status: 401 });
   }
 
-  // Validate user-agent is from cron-job.org
+  // Validate that the request comes from cron-job.org
   if (!userAgent.toLowerCase().includes('cron-job.org')) {
     return NextResponse.json({ error: 'Unauthorized (user-agent)' }, { status: 401 });
   }
@@ -37,16 +37,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    const today = new Date();
-    const firstDayCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const firstDayLastMonth = new Date(firstDayCurrentMonth.getFullYear(), firstDayCurrentMonth.getMonth() - 1, 1);
-    const lastDayLastMonth = new Date(firstDayCurrentMonth.getFullYear(), firstDayCurrentMonth.getMonth(), 0);
-    
-    // Format as yyyy-mm-dd using toLocaleDateString with 'en-CA' locale (which outputs ISO format)
-    const startDate = firstDayLastMonth.toLocaleDateString('en-CA'); // "2025-04-01"
-    const endDate = lastDayLastMonth.toLocaleDateString('en-CA');    // "2025-04-30"
+    // Get current date in the Europe/Madrid timezone
+    const now = new Date();
+    const localTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }));
+    const year = localTime.getFullYear();
+    const month = localTime.getMonth(); // 0-indexed
 
-    // Fetch data from Notion for the previous month
+    // Calculate first and last day of the previous month
+    const firstDayLastMonth = new Date(year, month - 1, 1);
+    const lastDayLastMonth = new Date(year, month, 0);
+
+    // Format dates as yyyy-mm-dd
+    const startDate = firstDayLastMonth.toLocaleDateString('en-CA'); // e.g. "2025-04-01"
+    const endDate = lastDayLastMonth.toLocaleDateString('en-CA');     // e.g. "2025-04-30"
+
+    // Query Notion for entries in the previous month
     const notionDataResponse = await request(`https://api.notion.com/v1/databases/${databaseId}/query`, {
       method: 'POST',
       headers: {
@@ -74,7 +79,6 @@ export async function POST(req: Request) {
       }),
     });
 
-    // Define an interface for the expected structure of the Notion data
     interface NotionResult {
       properties: {
         Fecha: { created_time: string };
@@ -88,72 +92,70 @@ export async function POST(req: Request) {
         'Contador Agua': { number: number };
       };
     }
-    
+
     const notionData = await notionDataResponse.body.json() as { results: NotionResult[] };
-    console.log('Notion data:', notionData);
     const data = notionData.results;
 
-    // If no data is found, return an error
     if (!data || data.length === 0) {
       return NextResponse.json({ error: 'No data found for the previous month' }, { status: 404 });
     }
 
-    // Format the consumption data
-    const formattedData = `
-      <h1>Monthly Consumption Report - Previous Month</h1>
+    // Build HTML table with data
+    const htmlTable = `
+      <h1>Monthly Consumption Report - ${firstDayLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
       <p>Hello,</p>
-      <p>This is the monthly consumption report for the month of ${firstDayLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+      <p>This is the monthly consumption report for ${firstDayLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
       <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
         <thead>
           <tr>
-            <th>Fecha</th>
-            <th>Temperatura Impulsión</th>
-            <th>Caudal</th>
-            <th>Potencia</th>
-            <th>Temperatura Retorno</th>
-            <th>Volumen</th>
-            <th>Energía</th>
-            <th>Tiempo Funcionamiento</th>
-            <th>Contador Agua</th>
+            <th>Date</th>
+            <th>Temperatura Impulsión (°C)</th>
+            <th>Caudal (m³/h)</th>
+            <th>Potencia (kW)</th>
+            <th>Temperatura Retorno (°C)</th>
+            <th>Volumen (m³)</th>
+            <th>Energía (kWh)</th>
+            <th>Tiempo Funcionamiento (days)</th>
+            <th>Contador Agua (m³)</th>
           </tr>
         </thead>
         <tbody>
-          ${data.map((entry: NotionResult) => {
-            const consumo = entry.properties;
+          ${data.map(entry => {
+            const props = entry.properties;
             return `
               <tr>
-                <td>${consumo['Fecha'].created_time}</td>
-                <td>${consumo['Temperatura Impulsión'].number} °C</td>
-                <td>${consumo['Caudal'].number} m³/h</td>
-                <td>${consumo['Potencia'].number} kW</td>
-                <td>${consumo['Temperatura Retorno'].number} °C</td>
-                <td>${consumo['Volumen'].number} m³</td>
-                <td>${consumo['Energía'].number} kWh</td>
-                <td>${consumo['Tiempo Funcionamiento'].number} days</td>
-                <td>${consumo['Contador Agua'].number} m³</td>
+                <td>${props.Fecha.created_time}</td>
+                <td>${props['Temperatura Impulsión'].number}</td>
+                <td>${props.Caudal.number}</td>
+                <td>${props.Potencia.number}</td>
+                <td>${props['Temperatura Retorno'].number}</td>
+                <td>${props.Volumen.number}</td>
+                <td>${props.Energía.number}</td>
+                <td>${props['Tiempo Funcionamiento'].number}</td>
+                <td>${props['Contador Agua'].number}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
       </table>
-      <p>Best Regards.</p>
+      <p>Best regards,</p>
     `;
 
-    // Get the previous month name for the subject
-    const previousMonth = firstDayLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    // Email subject with previous month
+    const subject = `Monthly Report (ACS and Heating Consumption) - ${firstDayLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
 
-    // Send the email with the previous month's consumption data
+    // Send email
     await resend.emails.send({
       from: 'onboarding@resend.dev',
       to: emailTo,
-      subject: `Monthly Report (ACS and Heating Consumption) - ${previousMonth}`,
-      html: formattedData,
+      subject,
+      html: htmlTable,
     });
 
     return NextResponse.json({ success: true }, { status: 200 });
 
   } catch (error) {
-    console.error('Error fetching Notion data or sending the email:', error);
+    console.error('Error:', error);
     return NextResponse.json({ error: 'Request failed' }, { status: 500 });
   }
 }
