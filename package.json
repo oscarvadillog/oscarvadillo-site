@@ -13,6 +13,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "redis": "^4.7.0",
+    "resend": "^4.4.1",
     "undici": "^7.8.0"
   },
   "devDependencies": {
