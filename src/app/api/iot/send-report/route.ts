@@ -100,6 +100,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No data found for the previous month' }, { status: 404 });
     }
 
+    // Helper function to format date in Madrid timezone
+    const formatToMadridTimezone = (utcDate: string): string => {
+      const dateUTC = new Date(utcDate);
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Madrid',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).format(dateUTC);
+    };
+
     // Build HTML table with data
     const htmlTable = `
       <h1>Monthly Consumption Report - ${firstDayLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
@@ -124,7 +139,7 @@ export async function POST(req: Request) {
             const props = entry.properties;
             return `
               <tr>
-                <td>${props.Fecha.created_time}</td>
+                <td>${formatToMadridTimezone(props.Fecha.created_time)}</td>
                 <td>${props['Temperatura Impulsión'].number}</td>
                 <td>${props.Caudal.number}</td>
                 <td>${props.Potencia.number}</td>
